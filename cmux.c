@@ -140,7 +140,7 @@ int send_at_command(int serial_fd, char *command) {
 		memset(bufp, 0, sizeof(bufp));
 		snprintf(bufp, sizeof(bufp), "%s => %s", command, buf);
 
-		for(i=0; i<strlen(bufp); i++) {
+		for (i = 0; i < strlen(bufp); i++) {
 			if (bufp[i] < ' ')
 				bufp[i] = ' ';
 		}
@@ -205,7 +205,7 @@ int get_major(char *driver) {
 *	Creates nodes for the virtual TTYs
 *	Returns the number of nodes created
 */
-int make_nodes(int major, char *basename, int number_nodes) {
+int make_nodes(int major, char *basename, int nodes_count) {
 	int minor, created = 0;
 	dev_t device;
 	char node_name[15];
@@ -214,7 +214,7 @@ int make_nodes(int major, char *basename, int number_nodes) {
 	/* set a new mask to get 666 mode and stores the old one */
 	oldmask = umask(0);
 
-	for (minor=1; minor<number_nodes+1; minor++) {
+	for (minor = 1; minor <= nodes_count; minor++) {
 
 		/* append the minor number to the base name */
 		sprintf(node_name, "%s%d", basename, minor);
@@ -241,11 +241,11 @@ int make_nodes(int major, char *basename, int number_nodes) {
 *	Removes previously created TTY nodes
 *	Returns nothing, it doesn't really matter if it fails
 */
-void remove_nodes(char *basename, int number_nodes) {
+void remove_nodes(char *basename, int nodes_count) {
 	char node_name[15];
 	int node;
 
-	for (node=1; node<number_nodes+1; node++) {
+	for (node = 1; node <= nodes_count; node++) {
 
 		/* append the minor number to the base name */
 		sprintf(node_name, "%s%d", basename, node);
@@ -358,7 +358,9 @@ int main(int argc, char **argv) {
 			return 0;
 		}
 
-		if (handle_string_arg(args, &g_type, "--type")
+		if 
+		(
+			handle_string_arg(args, &g_type, "--type")
 			|| handle_string_arg(args, &g_device, "--device")
 			|| handle_number_arg(args, &g_speed, "--speed")
 			|| handle_number_arg(args, &g_mtu, "--mtu")
@@ -366,12 +368,12 @@ int main(int argc, char **argv) {
 			|| handle_number_arg(args, &g_daemon, "--daemon")
 			|| handle_number_arg(args, &g_nodes, "--nodes")
 			|| handle_string_arg(args, &g_driver, "--driver")
-			|| handle_string_arg(args, &g_base, "--base")) {
-				i++;
-		} else {
+			|| handle_string_arg(args, &g_base, "--base")
+		)
+			i++;
+		else 
 			errx(EXIT_FAILURE, "Unknown argument: %s", args[0]);
-		}
-	};
+	}
 
 	speed = to_line_speed(g_speed);
 	g_type = to_lower(g_type);
@@ -386,13 +388,10 @@ int main(int argc, char **argv) {
 		errx(EXIT_FAILURE, "Invalid value for --debug: %d", g_debug);
 
 	if (g_nodes > 4)
-		errx(EXIT_FAILURE, "Invalid value for --nodes: %d", g_nodes);
+		errx(EXIT_FAILURE, "Invalid value for --nodes: %d , must be < 5.", g_nodes);
 
-	if (match(g_type, "sim900")) {
+	if (match(g_type, "sim900"))
 		g_mtu = 255;
-	} else {
-		g_mtu = 512;
-	}
 
 	/* print global parameters */
 	dbg(
@@ -461,10 +460,11 @@ int main(int argc, char **argv) {
 		if (send_at_command(serial_fd, "AT#CMUXMODE=0\r") == -1)
 			errx(EXIT_FAILURE, "AT#CMUXMODE=0: bad response");
 
-		(void)send_at_command(serial_fd, "AT+CMUX=0\r");
+		send_at_command(serial_fd, "AT+CMUX=0\r");
 	} else {
-		if (send_at_command(serial_fd, "AT+IFC=2,2\r") == -1)
-			errx(EXIT_FAILURE, "AT+IFC=2,2: bad response");
+		if (!match(g_type, "default"))
+			if (send_at_command(serial_fd, "AT+IFC=2,2\r") == -1)
+				errx(EXIT_FAILURE, "AT+IFC=2,2: bad response");
 
 		if (send_at_command(serial_fd, "AT+GMM\r") == -1)
 			warnx("AT+GMM: bad response");
@@ -472,7 +472,7 @@ int main(int argc, char **argv) {
 		if (send_at_command(serial_fd, "AT\r") == -1)
 			warnx("AT: bad response");
 
-		if (!match(g_type, "sim900")) {
+		if (!match(g_type, "sim900") && !match(g_type, "default")) {
 			sprintf(atcommand, "AT+IPR=%d&w\r", g_speed);
 			if (send_at_command(serial_fd, atcommand) == -1)
 				errx(EXIT_FAILURE, "AT+IPR=%d&w: bad response", g_speed);
@@ -485,13 +485,13 @@ int main(int argc, char **argv) {
 
 	/* use n_gsm line discipline */
 	if (match(g_type, "sim900")) {
-		sleep(0.1);
+		sleep(0);
 	} else {
-		sleep(2);
+		sleep(0);
 	}
 
 	if (ioctl(serial_fd, TIOCSETD, &ldisc) < 0)
-		err(EXIT_FAILURE, "Cannot set line discipline. Is 'n_gsm' module registered?");
+		err(EXIT_FAILURE, "Cannot set N_GSM0710 line discipline. Is 'n_gsm' kernel module registered?");
 
 	/* get n_gsm configuration */
 	if (ioctl(serial_fd, GSMIOC_GETCONF, &gsm) < 0)
@@ -509,7 +509,7 @@ int main(int argc, char **argv) {
 
 	if (ioctl(serial_fd, GSMIOC_SETCONF, &gsm) < 0)
 		err(EXIT_FAILURE, "Cannot set GSM multiplex parameters");
-	dbg("Line dicipline set");
+	dbg("Line discipline set.");
 
 	/* create the virtual TTYs */
 	if (g_nodes > 0) {
@@ -517,7 +517,10 @@ int main(int argc, char **argv) {
 		if ((major = get_major(g_driver)) < 0)
 			errx(EXIT_FAILURE, "Cannot get major number");
 		if ((created = make_nodes(major, g_base, g_nodes)) < g_nodes)
-			warnx("Cannot create all nodes, only %d/%d have been created.", created, g_nodes);
+			warnx("Cannot create all nodes, only %d of %d have been created.", created, g_nodes);
+		if (created == 0) {
+			warnx("No nodes have been created.");
+		}
 	}
 
 	/* detach from the terminal if needed */
@@ -530,12 +533,12 @@ int main(int argc, char **argv) {
 	/* wait to keep the line discipline enabled, wake it up with a signal */
 	signal(SIGINT, signal_callback_handler);
 	signal(SIGTERM, signal_callback_handler);
+
 	pause();
 
 	/* remove the created virtual TTYs */
-	if (g_nodes > 0) {
+	if (g_nodes > 0) 
 		remove_nodes(g_base, g_nodes);
-	}
 
 	/* close the serial line */
 	close(serial_fd);
