@@ -323,6 +323,9 @@ int to_line_speed(int speed) {
 		case 38400: return B38400;
 		case 57600: return B57600;
 		case 115200: return B115200;
+		case 230400: return B230400;
+		case 460800: return B460800;
+		case 921600: return B921600;
 		default:
 			errx(EXIT_FAILURE, "Invalid value for speed: %d", speed);
 	}
