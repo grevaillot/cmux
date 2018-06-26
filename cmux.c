@@ -79,6 +79,10 @@ int g_daemon = 1;
 */
 int g_debug = 1;
 
+/**
+* show version and exit
+*/
+bool g_version = false;
 /* serial port of the modem */
 char *g_device = "/dev/ttyUSB0";
 
@@ -296,9 +300,18 @@ int handle_number_arg(char **args, int *val, const char *opt) {
 	return 0;
 }
 
+int handle_set_flag_arg(char **args, bool *val, const char *opt) {
+	if (match(args[0], opt)) {
+		*val = true;
+		return 1;
+	}
+	return 0;
+}
+
 void print_help() {
 	printf(
 		"Usage: cmux --device /dev/ttyUSB0 --speed 115200\n\n"
+		"--version	print version\n"
 		"--type <type>	SIM900, TELIT or default. (Default: %s)\n"
 		"--device <name>	Serial device name. (Default: %s)\n"
 		"--speed <rate>	Serial device line speed. (Default: %d)\n"
@@ -370,6 +383,7 @@ int main(int argc, char **argv) {
 			|| handle_number_arg(args, &g_debug, "--debug")
 			|| handle_number_arg(args, &g_daemon, "--daemon")
 			|| handle_number_arg(args, &g_nodes, "--nodes")
+			|| handle_set_flag_arg(args, &g_version, "--version")
 			|| handle_string_arg(args, &g_driver, "--driver")
 			|| handle_string_arg(args, &g_base, "--base")
 		)
@@ -381,6 +395,10 @@ int main(int argc, char **argv) {
 	speed = to_line_speed(g_speed);
 	g_type = to_lower(g_type);
 
+	if (g_version) {
+		dbg( "version: %s:%s\n" __DATE__, __TIME__);
+		exit(EXIT_SUCCESS);
+	}
 	if (strcmp(g_type, "default") && strcmp(g_type, "sim900") && strcmp(g_type, "telit"))
 		errx(EXIT_FAILURE, "Invalid value for --type: %s", g_type);
 
@@ -398,6 +416,7 @@ int main(int argc, char **argv) {
 
 	/* print global parameters */
 	dbg(
+		"version: %s:%s\n"
 		"type: %s\n"
 		"device: %s\n"
 		"speed: %d\n"
@@ -407,6 +426,7 @@ int main(int argc, char **argv) {
 		"driver: %s\n"
 		"base: %s\n"
 		"nodes: %d\n",
+		__DATE__, __TIME__,
 		g_type, g_device, g_speed, g_mtu, g_debug,
 		g_daemon, g_driver, g_nodes ? g_base : "disabled", g_nodes
 	);
