@@ -60,6 +60,9 @@ char *g_type = "default";
 /* number of virtual TTYs to create (most modems can handle up to 4) */
 int g_nodes = 1;
 
+/* remove dangling virtual TTYs at start */
+bool g_remove_nodes_at_start = 0;
+
 /* name of the virtual TTYs to create */
 char *g_base = "/dev/ttyGSM";
 
@@ -335,6 +338,7 @@ void print_help() {
 		"--driver <name>	Driver to use. (Default: %s)\n"
 		"--base <name>	Base name for the nodes. (Default: %s)\n"
 		"--nodes [0-4]	Number of nodes to create. (Default: %d)\n"
+		"--remove_nodes Remove danglings nodes at start.\n"
 		"\n",
 		g_type, g_device, g_speed, g_mtu, g_debug,
 		g_daemon, g_driver, g_base, g_nodes
@@ -388,7 +392,7 @@ int main(int argc, char **argv) {
 			return 0;
 		}
 
-		if 
+		if
 		(
 			handle_string_arg(args, &g_type, "--type")
 			|| handle_string_arg(args, &g_device, "--device")
@@ -398,11 +402,12 @@ int main(int argc, char **argv) {
 			|| handle_number_arg(args, &g_daemon, "--daemon")
 			|| handle_number_arg(args, &g_nodes, "--nodes")
 			|| handle_set_flag_arg(args, &g_version, "--version")
+			|| handle_set_flag_arg(args, &g_remove_nodes_at_start, "--remove_nodes")
 			|| handle_string_arg(args, &g_driver, "--driver")
 			|| handle_string_arg(args, &g_base, "--base")
 		)
 			i++;
-		else 
+		else
 			errx(EXIT_FAILURE, "Unknown argument: %s", args[0]);
 	}
 
@@ -440,9 +445,10 @@ int main(int argc, char **argv) {
 		"driver: %s\n"
 		"base: %s\n"
 		"nodes: %d\n",
+		"remove nodes: %d\n",
 		__DATE__, __TIME__,
 		g_type, g_device, g_speed, g_mtu, g_debug,
-		g_daemon, g_driver, g_nodes ? g_base : "disabled", g_nodes
+		g_daemon, g_driver, g_nodes ? g_base : "disabled", g_nodes, g_remove_nodes_at_start
 	);
 
 	/* open the serial port */
@@ -548,6 +554,11 @@ int main(int argc, char **argv) {
 		err(EXIT_FAILURE, "Cannot set GSM multiplex parameters");
 	dbg("Line discipline set.");
 
+	if (g_remove_nodes_at_start) {
+		if (g_nodes > 0)
+			remove_nodes(g_base, g_nodes);
+	}
+
 	/* create the virtual TTYs */
 	if (g_nodes > 0) {
 		int created;
@@ -574,7 +585,7 @@ int main(int argc, char **argv) {
 	pause();
 
 	/* remove the created virtual TTYs */
-	if (g_nodes > 0) 
+	if (g_nodes > 0)
 		remove_nodes(g_base, g_nodes);
 
 	/* close the serial line */
