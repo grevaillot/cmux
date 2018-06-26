@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <stdbool.h>
 #include <string.h>
 
 #include <fcntl.h>
@@ -122,8 +123,21 @@ int send_at_command(int serial_fd, char *command) {
 	if (write(serial_fd, command, strlen(command)) <= 0)
 		err(EXIT_FAILURE, "Cannot write to %s", g_device);
 
-	/* wait a bit to allow the modem to rest */
-	sleep(1);
+	fd_set set;
+	struct timeval timeout = {
+			.tv_sec = 2,
+			.tv_usec = 0,
+	};
+
+	FD_ZERO(&set);
+	FD_SET(serial_fd, &set);
+
+	int ret = select(serial_fd + 1, &set, NULL, NULL, &timeout);
+	if (ret == -1) {
+			err(EXIT_FAILURE, "Cannot read %s - select", g_device);
+	} else if(ret == 0) {
+			errx(EXIT_FAILURE, "Cannot read %s - timeout", g_device);
+	}
 
 	/* read the result of the command from the modem */
 	memset(buf, 0, sizeof(buf));
