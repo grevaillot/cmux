@@ -116,67 +116,129 @@ static void dbg(char *fmt, ...) {
 	return;
 }
 
+static char *trim_rn(char *str)
+{
+	char *s = str;
+
+	char *p = s;
+	while (*p) {
+		if ((*p != '\r') && (*p != '\n')) {
+			*s = *p;
+			s++;
+		}
+		p++;
+	}
+	*s = '\0';
+
+	return str;
+}
+
+static ssize_t read_timeout(int fd, void *buf, size_t count, struct timeval *timeout)
+{
+	fd_set set;
+
+	FD_ZERO(&set);
+	FD_SET(fd, &set);
+
+	int ret = select(fd + 1, &set, NULL, NULL, timeout);
+	if (ret == -1) {
+		return -1;
+	} else if(ret == 0) {
+		return 0;
+	}
+
+	return read(fd, buf, count);
+}
+
+
 /**
 *	Sends an AT command to the specified line and gets its result
 *	Returns  0 on success
 *			-1 on failure
 */
-int send_at_command(int serial_fd, char *command) {
-	char buf[SIZE_BUF];
-	int r;
 
-	/* write the AT command to the serial line */
-	if (write(serial_fd, command, strlen(command)) <= 0)
-		err(EXIT_FAILURE, "Cannot write to %s", g_device);
+static int at_sync_cmdget(int fd, char *at_cmd, char *result, size_t result_len)
+{
+	int r = -1;
 
-	fd_set set;
-	struct timeval timeout = {
-			.tv_sec = 2,
-			.tv_usec = 0,
-	};
-
-	FD_ZERO(&set);
-	FD_SET(serial_fd, &set);
-
-	int ret = select(serial_fd + 1, &set, NULL, NULL, &timeout);
-	if (ret == -1) {
-			err(EXIT_FAILURE, "Cannot read %s - select", g_device);
-	} else if(ret == 0) {
-			errx(EXIT_FAILURE, "Cannot read %s - timeout", g_device);
-	}
-
-	/* read the result of the command from the modem */
-	memset(buf, 0, sizeof(buf));
-	r = read(serial_fd, buf, sizeof(buf));
-	if (r == -1)
-		err(EXIT_FAILURE, "Cannot read %s", g_device);
-
-	/* if there is no result from the modem, return failure */
-	if (r == 0) {
-		dbg("%s\t: No response", command);
+	if ((fd < 0) || (!at_cmd) || (!result))
 		return -1;
+
+	char b;
+	int flushed = 0;
+	while (read(fd, &b, 1) > 0) {
+		flushed++;
 	}
 
-	/* if we have a result and want debug info, strip CR & LF out from the output */
-	if (g_debug) {
-		unsigned int i;
-		char bufp[sizeof(buf)+40];
-		memset(bufp, 0, sizeof(bufp));
-		snprintf(bufp, sizeof(bufp), "%s => %s", command, buf);
+	int at_sync_cmdlen = strlen(at_cmd);
+	if (at_cmd[at_sync_cmdlen - 1] != '\r') {
+		dprintf(fd, "%s\r", at_cmd);
+	} else {
+		dprintf(fd, "%s", at_cmd);
+	}
 
-		for (i = 0; i < strlen(bufp); i++) {
-			if (bufp[i] < ' ')
-				bufp[i] = ' ';
+	fsync(fd);
+
+	dbg("%s: wrote %s", __FUNCTION__, at_cmd);
+
+	char buf[result_len];
+	size_t buf_content = 0;
+	bzero(buf, result_len);
+
+	bool do_read = true;
+	while (do_read) {
+		struct timeval tout = { .tv_sec = 0, .tv_usec = 500 * 1000 };
+		int ret = read_timeout(fd, buf + buf_content, sizeof(buf) - (buf_content + 1), &tout);
+
+		if (ret < 0) {
+			warn("%s: could not read %s\n", __FUNCTION__, at_cmd);
+			do_read = false;
+		} else if (ret == 0) {
+			dbg("%s: got 0 or timeout", __FUNCTION__);
+			do_read = false;
+		} else {
+			buf_content += ret;
+
+			char *ptr;
+			if ((ptr = strstr(buf, "OK"))) {
+				dbg("%s: got OK", __FUNCTION__);
+				do_read = false;
+				r = 0;
+				*ptr = 0;
+			} else if ((ptr =  strstr(buf, "ERROR"))) {
+				do_read = false;
+				r = 1;
+				dbg("%s: got ERROR on %s\n"
+						"----\n"
+						"%s\n"
+						"----"
+						, __FUNCTION__, at_cmd, buf);
+				*ptr = 0;
+			}
 		}
-		dbg("%s", bufp);
 	}
 
-	/* if the output shows "OK" return success */
-	if (strstr(buf, "OK\r") != NULL) {
-		return 0;
-	}
+	if (r < 0)
+		return r;
 
-	return -1;
+	trim_rn(buf);
+	bzero(result, result_len);
+	strncpy(result, buf, result_len - 1);
+	return r;
+}
+
+static int at_sync_cmdok(int fd, char *at_cmd)
+{
+	char buf[SIZE_BUF];
+	return at_sync_cmdget(fd, at_cmd, buf, sizeof(buf));
+}
+
+static int send_at_command(int serial_fd, char *command)
+{
+	char buf[SIZE_BUF] = {0,};
+	int ret = at_sync_cmdget(serial_fd, command, buf, sizeof(buf));
+	dbg("%s: %s->%s, ret %d", __FUNCTION__, command, buf, ret);
+	return ret;
 }
 
 /**
@@ -447,15 +509,16 @@ int main(int argc, char **argv) {
 		"daemon: %d\n"
 		"driver: %s\n"
 		"base: %s\n"
-		"nodes: %d\n",
-		"remove nodes: %d\n",
+		"nodes: %d\n"
+		"remove nodes: %s\n",
 		__DATE__, __TIME__,
 		g_type, g_device, g_speed, g_mtu, g_debug,
-		g_daemon, g_driver, g_nodes ? g_base : "disabled", g_nodes, g_remove_nodes_at_start
+		g_daemon, g_driver, g_nodes ? g_base : "disabled", g_nodes,
+		g_remove_nodes_at_start ? "true" : "false"
 	);
 
 	/* open the serial port */
-	serial_fd = open(g_device, O_RDWR | O_NOCTTY | O_NDELAY);
+	serial_fd = open(g_device,  O_RDWR | O_NOCTTY | O_SYNC | O_NONBLOCK);
 	if (serial_fd == -1)
 		err(EXIT_FAILURE, "Cannot open %s", g_device);
 
@@ -480,6 +543,29 @@ int main(int argc, char **argv) {
 	if (tcsetattr(serial_fd, TCSANOW, &tio) == -1)
 		err(EXIT_FAILURE, "Cannot set line attributes");
 
+
+	int retry = 5;
+	while (true) {
+		dbg("%s: attempting to ping module...\n", __FUNCTION__);
+
+		// disable echo and stuff
+		dprintf(serial_fd, "ATE0\r\n");
+		fsync(serial_fd);
+
+		if (at_sync_cmdok(serial_fd, "AT") == 0) {
+			dbg("%s: got OK", __FUNCTION__);
+			break;
+		}
+
+		retry--;
+
+		if (retry == 0)
+			errx(EXIT_FAILURE, "no response, abort");
+
+		dbg("%s: wait and retry...", __FUNCTION__);
+		sleep(1);
+	}
+
 	/**
 	*	Send AT commands to put the modem in CMUX mode.
 	*	This is vendor specific and should be changed
@@ -488,34 +574,34 @@ int main(int argc, char **argv) {
 	*/
 
 	if (match(g_type, "sim900")) {
-		if (send_at_command(serial_fd, "AAAT\r") == -1)
+		if (send_at_command(serial_fd, "AAAT\r"))
 			errx(EXIT_FAILURE, "AAAAT: bad response");
 	}
 
 	if (match(g_type, "telit")) {
-		if (send_at_command(serial_fd, "AT#SELINT=2\r") == -1)
+		if (send_at_command(serial_fd, "AT#SELINT=2\r"))
 			errx(EXIT_FAILURE, "AT#SELINT=2: bad response");
 
-		if (send_at_command(serial_fd, "ATE0V1&K3&D2\r") == -1)
+		if (send_at_command(serial_fd, "ATE0V1&K3&D2\r"))
 			errx(EXIT_FAILURE, "ATE0V1&K3&D2: bad response");
 
 		sprintf(atcommand, "AT+IPR=%d\r", g_speed);
-		if (send_at_command(serial_fd, atcommand) == -1)
+		if (send_at_command(serial_fd, atcommand))
 			errx(EXIT_FAILURE, "AT+IPR=%d: bad response", g_speed);
 
-		if (send_at_command(serial_fd, "AT#CMUXMODE=0\r") == -1)
+		if (send_at_command(serial_fd, "AT#CMUXMODE=0\r"))
 			errx(EXIT_FAILURE, "AT#CMUXMODE=0: bad response");
 
 		send_at_command(serial_fd, "AT+CMUX=0\r");
 	} else {
 		if (!match(g_type, "default"))
-			if (send_at_command(serial_fd, "AT+IFC=2,2\r") == -1)
+			if (send_at_command(serial_fd, "AT+IFC=2,2\r"))
 				errx(EXIT_FAILURE, "AT+IFC=2,2: bad response");
 
-		if (send_at_command(serial_fd, "AT+GMM\r") == -1)
+		if (send_at_command(serial_fd, "AT+GMM\r"))
 			warnx("AT+GMM: bad response");
 
-		if (send_at_command(serial_fd, "AT\r") == -1)
+		if (send_at_command(serial_fd, "AT\r"))
 			warnx("AT: bad response");
 
 		if (!match(g_type, "sim900") && !match(g_type, "default")) {
