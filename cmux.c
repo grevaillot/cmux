@@ -237,7 +237,7 @@ static int send_at_command(int serial_fd, char *command)
 {
 	char buf[SIZE_BUF] = {0,};
 	int ret = at_sync_cmdget(serial_fd, command, buf, sizeof(buf));
-	dbg("%s: %s->%s, ret %d", __FUNCTION__, command, buf, ret);
+	//dbg("%s: %d, %s->\n%s\n", __FUNCTION__, ret, command, buf);
 	return ret;
 }
 
