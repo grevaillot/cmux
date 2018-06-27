@@ -1,6 +1,7 @@
 
 CC?=gcc
-CFLAGS?=-Wall -std=gnu99
+CFLAGS ?=-Wall -std=gnu99 -ggdb3 -Wshadow -Wstrict-aliasing -Wstrict-overflow -Wno-missing-field-initializers
+
 DESTDIR?=/
 PREFIX?=usr
 
