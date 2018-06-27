@@ -97,7 +97,7 @@ int g_speed = 115200;
 int g_mtu = 512;
 
 /* multiplexed baudrate, 5 = 115200, 6=230400, 7=1Mbit*/
-int g_mux_baudrate = 6;
+int g_mux_speed = 5;
 
 /**
 *	Prints debug messages to stderr if debug is wanted
@@ -403,10 +403,11 @@ void print_help() {
 		"--driver <name>	Driver to use. (Default: %s)\n"
 		"--base <name>	Base name for the nodes. (Default: %s)\n"
 		"--nodes [0-4]	Number of nodes to create. (Default: %d)\n"
+		"--muxed_speed [0-7a	Multiplexed line speed. (Default: %d)\n"
 		"--remove_nodes Remove danglings nodes at start.\n"
 		"\n",
 		g_type, g_device, g_speed, g_mtu, g_debug,
-		g_daemon, g_driver, g_base, g_nodes
+		g_daemon, g_driver, g_base, g_mux_speed, g_nodes
 	);
 }
 
@@ -466,6 +467,7 @@ int main(int argc, char **argv) {
 			|| handle_number_arg(args, &g_debug, "--debug")
 			|| handle_number_arg(args, &g_daemon, "--daemon")
 			|| handle_number_arg(args, &g_nodes, "--nodes")
+			|| handle_number_arg(args, &g_mux_speed, "--muxed_speed")
 			|| handle_set_flag_arg(args, &g_version, "--version")
 			|| handle_set_flag_arg(args, &g_remove_nodes_at_start, "--remove_nodes")
 			|| handle_string_arg(args, &g_driver, "--driver")
@@ -504,6 +506,7 @@ int main(int argc, char **argv) {
 		"type: %s\n"
 		"device: %s\n"
 		"speed: %d\n"
+		"multiplexed speed: %d\n"
 		"mtu: %d\n"
 		"debug: %d\n"
 		"daemon: %d\n"
@@ -512,7 +515,7 @@ int main(int argc, char **argv) {
 		"nodes: %d\n"
 		"remove nodes: %s\n",
 		__DATE__, __TIME__,
-		g_type, g_device, g_speed, g_mtu, g_debug,
+		g_type, g_device, g_speed, g_mux_speed, g_mtu, g_debug,
 		g_daemon, g_driver, g_nodes ? g_base : "disabled", g_nodes,
 		g_remove_nodes_at_start ? "true" : "false"
 	);
@@ -610,7 +613,7 @@ int main(int argc, char **argv) {
 				errx(EXIT_FAILURE, "AT+IPR=%d&w: bad response", g_speed);
 		}
 
-		sprintf(atcommand, "AT+CMUX=0,0,%d,%d,10,3,30,10,2\r", g_mux_baudrate, g_mtu);
+		sprintf(atcommand, "AT+CMUX=0,0,%d,%d,10,3,30,10,2\r", g_mux_speed, g_mtu);
 		if (send_at_command(serial_fd, atcommand))
 			errx(EXIT_FAILURE, "Cannot enable modem CMUX");
 	}
