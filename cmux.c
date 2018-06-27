@@ -96,6 +96,9 @@ int g_speed = 115200;
 /* maximum transfert unit (MTU), value in bytes */
 int g_mtu = 512;
 
+/* multiplexed baudrate, 5 = 115200, 6=230400, 7=1Mbit*/
+int g_mux_baudrate = 6;
+
 /**
 *	Prints debug messages to stderr if debug is wanted
 */
@@ -521,8 +524,8 @@ int main(int argc, char **argv) {
 				errx(EXIT_FAILURE, "AT+IPR=%d&w: bad response", g_speed);
 		}
 
-		sprintf(atcommand, "AT+CMUX=0,0,5,%d,10,3,30,10,2\r", g_mtu);
-		if (send_at_command(serial_fd, atcommand) == -1)
+		sprintf(atcommand, "AT+CMUX=0,0,%d,%d,10,3,30,10,2\r", g_mux_baudrate, g_mtu);
+		if (send_at_command(serial_fd, atcommand))
 			errx(EXIT_FAILURE, "Cannot enable modem CMUX");
 	}
 
