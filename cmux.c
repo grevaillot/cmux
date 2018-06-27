@@ -529,8 +529,6 @@ int main(int argc, char **argv) {
 	/* use n_gsm line discipline */
 	if (match(g_type, "sim900")) {
 		sleep(0);
-	} else {
-		sleep(0);
 	}
 
 	if (ioctl(serial_fd, TIOCSETD, &ldisc) < 0)
